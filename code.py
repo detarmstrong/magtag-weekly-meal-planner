@@ -1,6 +1,3 @@
-# SPDX-FileCopyrightText: 2021 ladyada for Adafruit Industries
-# SPDX-License-Identifier: MIT
-
 import sys
 import time
 from adafruit_magtag.magtag import MagTag
@@ -8,8 +5,13 @@ from adafruit_display_text.label import Label
 from adafruit_bitmap_font import bitmap_font
 from adafruit_magtag.magtag import Graphics, Network
 from adafruit_display_shapes.rect import Rect
+import adafruit_requests
+import displayio
+
+TSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQ_c5arGMBsm6tPDyCbTXZt9qgc2HEhv3P86uEoRvWi4INJYrJl5z6bN8LYX2mM4VZdIpdsskvWns1v/pub?gid=0&single=true&output=tsv'
 
 magtag = MagTag()
+
 
 # DisplayIO setup
 font_small = bitmap_font.load_font("/fonts/Arial-12.pcf")
@@ -17,7 +19,7 @@ font_large = bitmap_font.load_font("/fonts/Arial-14.pcf")
 
 graphics = Graphics(auto_refresh=False)
 display = graphics.display
-
+main_group = displayio.Group()
 
 RED = 0x880000
 GREEN = 0x008800
@@ -28,17 +30,19 @@ MAGENTA = 0x9900BB
 WHITE = 0x888888
 
 
-recipes = [{"label": 'Easy Vegan Peanut Butter-Maple Ice Cream Recipe - NYT Cooking',
-            "url": "https://cooking.nytimes.com/recipes/1023276-easy-vegan-peanut-butter-maple-ice-cream"},
-           {"label": 'Weasel Stew for me and you',
-            "url": "https://www.nytimes.com/2016/06/14/science/weasels-are-built-for-the-hunt.html"}]
-
-
 global_selection_index = 0
 
 
 def render_list(recipes, selection_index=0):
-    clear_screen()
+    bg_bitmap = displayio.Bitmap(display.width // 8, display.height // 8, 1)
+    bg_palette = displayio.Palette(1)
+    bg_palette[0] = 0xFFFFFF
+    bg_sprite = displayio.TileGrid(
+        bg_bitmap, x=0, y=0, pixel_shader=bg_palette)
+    bg_group = displayio.Group(scale=8)
+    bg_group.append(bg_sprite)
+    main_group.append(bg_group)
+
     top_offset = 10
     for i, recipe in enumerate(recipes):
         label_overview_text = Label(
@@ -50,21 +54,14 @@ def render_list(recipes, selection_index=0):
             background_color=(0xFFFFFF if i != selection_index else 0x000000),
             text=recipe["label"],
         )
-        graphics.splash.append(label_overview_text)
+        main_group.append(label_overview_text)
         top_offset += 10 + 15
+
+    display.show(main_group)
     display.refresh()
 
 
-def clear_screen():
-    for x in range(0, len(graphics.splash)):
-        graphics.splash.pop()
-    background = Rect(0, 0, 296, 128, fill=0xFFFFFF)
-    graphics.splash.append(background)
-
-
 def render_qr(recipes, selection_index=0):
-    clear_screen()
-    time.sleep(5)
     graphics.qrcode(
         recipes[selection_index]["url"], qr_size=2, x=140, y=40)
     graphics.display.show(graphics.splash)
@@ -80,13 +77,29 @@ def blink(color, duration):
 
 blink(WHITE, 0.4)
 
-clear_screen()
+# Get spreadsheet data as TSV and parse it
+tsv_response = magtag.network.fetch(TSV_URL)
+print(tsv_response.status_code)
+tsv_data = tsv_response.text
+print(tsv_data)
+
+lines = tsv_data.split('\r\n')
+
+# MOCK DATA
+# recipes = [{"label": 'Easy Vegan Peanut Butter-Maple Ice Cream Recipe - NYT Cooking',
+#             "url": "https://cooking.nytimes.com/recipes/1023276-easy-vegan-peanut-butter-maple-ice-cream"},
+#            {"label": 'Weasel Stew for me and you',
+#             "url": "https://google.com?q=weasel+stew"}]
+
+recipes = []
+for line in lines[1:]:  # Skip first line
+    cells = line.split("\t")  # Tab-separated!
+    recipes.append({"label": cells[2],
+                    "url":  cells[3]})
+
+time.sleep(4)  # sleep for 4 seconds to avoid the refresh too soon message
 render_list(recipes)
 
-# graphics.qrcode(
-#     "https://cooking.nytimes.com/recipes/1023276-easy-vegan-peanut-butter-maple-ice-cream", qr_size=2, x=140, y=40)
-# graphics.display.show(graphics.splash)
-# display.refresh()
 
 while True:
     # cursor go up
