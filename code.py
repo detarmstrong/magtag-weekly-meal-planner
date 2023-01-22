@@ -76,28 +76,36 @@ def blink(color, duration):
 
 
 blink(WHITE, 0.4)
+blink(RED, 0.4)
+blink(WHITE, 0.4)
 
-# Get spreadsheet data as TSV and parse it
-tsv_response = magtag.network.fetch(TSV_URL)
-print(tsv_response.status_code)
-tsv_data = tsv_response.text
-print(tsv_data)
+time.sleep(2)
 
-lines = tsv_data.split('\r\n')
 
-# MOCK DATA
-# recipes = [{"label": 'Easy Vegan Peanut Butter-Maple Ice Cream Recipe - NYT Cooking',
-#             "url": "https://cooking.nytimes.com/recipes/1023276-easy-vegan-peanut-butter-maple-ice-cream"},
-#            {"label": 'Weasel Stew for me and you',
-#             "url": "https://google.com?q=weasel+stew"}]
+def fetch_recipes(url):
+    # Get spreadsheet data as TSV and parse it
+    tsv_response = magtag.network.fetch(url)
+    print(tsv_response.status_code)
+    tsv_data = tsv_response.text
+    print(tsv_data)
 
-recipes = []
-for line in lines[1:]:  # Skip first line
-    cells = line.split("\t")  # Tab-separated!
-    recipes.append({"label": cells[2],
-                    "url":  cells[3]})
+    lines = tsv_data.split('\r\n')
 
-time.sleep(4)  # sleep for 4 seconds to avoid the refresh too soon message
+    # MOCK DATA
+    # recipes = [{"label": 'Easy Vegan Peanut Butter-Maple Ice Cream Recipe - NYT Cooking',
+    #             "url": "https://cooking.nytimes.com/recipes/1023276-easy-vegan-peanut-butter-maple-ice-cream"},
+    #            {"label": 'Weasel Stew for me and you',
+    #             "url": "https://google.com?q=weasel+stew"}]
+
+    recipes = []
+    for line in lines[1:]:  # Skip first line
+        cells = line.split("\t")  # Tab-separated!
+        recipes.append({"label": cells[2],
+                        "url":  cells[3]})
+
+
+# time.sleep(4)  # sleep for 4 seconds to avoid the refresh too soon message
+recipes = fetch_recipes(TSV_URL)
 render_list(recipes)
 
 
@@ -116,10 +124,12 @@ while True:
             global_selection_index + 1, len(recipes) - 1)
         render_list(recipes, global_selection_index)
         time.sleep(5)
+    # cursor go right
     if magtag.peripherals.button_d_pressed:
         blink(GREEN, 0.4)
         render_qr(recipes, global_selection_index)
         time.sleep(5)
+    # cursor go left
     if magtag.peripherals.button_a_pressed:
         blink(MAGENTA, 0.4)
         render_list(recipes, global_selection_index)
