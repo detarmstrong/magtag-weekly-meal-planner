@@ -7,11 +7,17 @@ from adafruit_magtag.magtag import Graphics, Network
 from adafruit_display_shapes.rect import Rect
 import adafruit_requests
 import displayio
+from adafruit_led_animation.animation.sparkle import Sparkle
+from adafruit_led_animation.animation.solid import Solid
+from adafruit_led_animation.sequence import AnimationSequence, AnimateOnce
+from adafruit_led_animation.group import AnimationGroup
 
 TSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQ_c5arGMBsm6tPDyCbTXZt9qgc2HEhv3P86uEoRvWi4INJYrJl5z6bN8LYX2mM4VZdIpdsskvWns1v/pub?gid=0&single=true&output=tsv'
 
 magtag = MagTag()
-
+pixels = magtag.peripherals.neopixels
+pixels.brightness = 0.5
+magtag.peripherals.neopixel_disable = False
 
 # DisplayIO setup
 font_small = bitmap_font.load_font("/fonts/Arial-12.pcf")
@@ -31,6 +37,20 @@ WHITE = 0x888888
 
 
 global_selection_index = 0
+
+
+def try_refresh():
+    """Attempt to refresh the display. Catch 'refresh too soon' error
+    and retry after waiting 10 seconds.
+    """
+    try:
+        display.refresh()
+    except RuntimeError as too_soon_error:
+        # catch refresh too soon
+        print(too_soon_error)
+        print("waiting before retry refresh()")
+        time.sleep(10)
+        display.refresh()
 
 
 def render_list(recipes, selection_index=0):
@@ -58,14 +78,14 @@ def render_list(recipes, selection_index=0):
         top_offset += 10 + 15
 
     display.show(main_group)
-    display.refresh()
+    try_refresh()
 
 
 def render_qr(recipes, selection_index=0):
     graphics.qrcode(
         recipes[selection_index]["url"], qr_size=2, x=140, y=40)
     graphics.display.show(graphics.splash)
-    display.refresh()
+    try_refresh()
 
 
 def blink(color, duration):
@@ -75,16 +95,24 @@ def blink(color, duration):
     magtag.peripherals.neopixel_disable = True
 
 
-blink(WHITE, 0.4)
-blink(RED, 0.4)
-blink(WHITE, 0.4)
-
-time.sleep(2)
+def play_start_lightshow():
+    blink(WHITE, 0.4)
+    blink(RED, 0.4)
+    blink(WHITE, 0.4)
 
 
 def fetch_recipes(url):
+    try:
+        # My pet theory is this throw away http request is required
+        # to circumvent the RuntimeError: Sending request failed error
+        test = magtag.network.fetch("https://www.google.com", timeout=30)
+        tsv_response = magtag.network.fetch(url, timeout=30)
+    except (RuntimeError, OSError) as e:
+        print(e)
+        time.sleep(3)
+        tsv_response = magtag.network.fetch(url, timeout=30)
+
     # Get spreadsheet data as TSV and parse it
-    tsv_response = magtag.network.fetch(url)
     print(tsv_response.status_code)
     tsv_data = tsv_response.text
     print(tsv_data)
@@ -102,13 +130,24 @@ def fetch_recipes(url):
         cells = line.split("\t")  # Tab-separated!
         recipes.append({"label": cells[2],
                         "url":  cells[3]})
+    return recipes
 
 
-# time.sleep(4)  # sleep for 4 seconds to avoid the refresh too soon message
+play_start_lightshow()
+time.sleep(2)
 recipes = fetch_recipes(TSV_URL)
 render_list(recipes)
 
-
+animations = AnimationSequence(
+    AnimationGroup(
+        Sparkle(pixels, .1, BLUE, 15)),
+    AnimationGroup(
+        # Turn the LEDs off.
+        Solid(pixels, 0),
+    ),
+    auto_clear=True,
+)
+btn_sleep_time = 5
 while True:
     # cursor go up
     if magtag.peripherals.button_b_pressed:
@@ -116,23 +155,24 @@ while True:
         blink(YELLOW, 0.4)
         global_selection_index = max(global_selection_index - 1, 0)
         render_list(recipes, global_selection_index)
-        time.sleep(5)
+        time.sleep(btn_sleep_time)
     # cursor go down
     if magtag.peripherals.button_c_pressed:
         blink(CYAN, 0.4)
         global_selection_index = min(
             global_selection_index + 1, len(recipes) - 1)
         render_list(recipes, global_selection_index)
-        time.sleep(5)
+        time.sleep(btn_sleep_time)
     # cursor go right
     if magtag.peripherals.button_d_pressed:
         blink(GREEN, 0.4)
         render_qr(recipes, global_selection_index)
-        time.sleep(5)
+        time.sleep(btn_sleep_time)
     # cursor go left
     if magtag.peripherals.button_a_pressed:
         blink(MAGENTA, 0.4)
         render_list(recipes, global_selection_index)
-        time.sleep(5)
+        time.sleep(btn_sleep_time)
 
-    time.sleep(0.01)
+    # animations.animate()
+    # need this? time.sleep(0.01)
